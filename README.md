@@ -101,7 +101,7 @@ Feel free to fork the repo and submit a pull request for:
 ---
 ## 📺 Demo
 
-[https://user-images.githubusercontent.com/your-username/demo\_video.mp4](https://user-images.githubusercontent.com/your-username/demo_video.mp4)
+![Project Demo](screenshots/projectdemo1.gif)
 
 > 🎥 *Watch the full demo video above to see the dashboard in action!*
 
