@@ -34,16 +34,18 @@ app = dash.Dash(
         {"name": "viewport", "content": "width=device-width, initial-scale=1.0"}
     ]
 )
+server = app.server
 app.title = "California Housing Dashboard"
 
 # Custom CSS
 colors = {
-    'background': '#f9f9f9',
-    'text': '#333333',
-    'primary': '#3366cc',
-    'secondary': '#ff9900',
-    'panel': '#ffffff'
+    'background': '#e6f2ff',   # Light sky blue – subtle and fresh
+    'text': '#2c3e50',         # Deep navy – strong contrast for readability
+    'primary': '#1abc9c',      # Teal – resembles ocean/river hues
+    'secondary': '#16a085',    # Deep teal – accents and buttons
+    'panel': '#ffffff',        # Clean white panels
 }
+
 
 # App layout with better styling
 app.layout = html.Div([
@@ -539,4 +541,4 @@ def reset_filters(n_clicks):
 
 # Run the app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False, host='0.0.0.0', port=8050)
