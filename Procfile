@@ -1,1 +1,1 @@
-web: gunicorn dashboard_app:server
+web: gunicorn dashboard_app:server --timeout 120 --workers 4

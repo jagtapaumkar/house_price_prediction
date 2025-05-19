@@ -5,9 +5,41 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 import numpy as np
+import os
+import requests
+from io import StringIO
 
-# Load data
-data = pd.read_csv("Housing.csv")
+# Load data - use a path that works in both local and deployed environments
+data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Housing.csv")
+try:
+    # First attempt - check local file
+    data = pd.read_csv(data_path)
+    print(f"Successfully loaded data from {data_path}")
+except Exception as e:
+    print(f"Error loading from {data_path}: {e}")
+    # Fallback to direct path if above fails
+    try:
+        data = pd.read_csv("Housing.csv")
+        print("Successfully loaded data from direct path")
+    except Exception as e:
+        print(f"Error loading from direct path: {e}")
+        # Third fallback - try to download from a public source
+        try:
+            print("Attempting to download data from GitHub...")
+            url = "https://raw.githubusercontent.com/ageron/handson-ml/master/datasets/housing/housing.csv" 
+            response = requests.get(url)
+            data = pd.read_csv(StringIO(response.text))
+            print("Successfully downloaded data from GitHub")
+            # Save to local file for future use
+            data.to_csv("Housing.csv", index=False)
+            print("Saved downloaded data to Housing.csv")
+        except Exception as e:
+            print(f"Error downloading data: {e}")
+            # Create empty DataFrame with required columns as last resort
+            print("Creating empty dataset with required columns")
+            data = pd.DataFrame(columns=['median_house_value', 'median_income', 'total_rooms', 
+                                        'total_bedrooms', 'population', 'households', 'latitude', 
+                                        'longitude', 'ocean_proximity'])
 
 # Handle missing data
 data.dropna(inplace=True)
@@ -32,10 +64,22 @@ app = dash.Dash(
     __name__, 
     meta_tags=[
         {"name": "viewport", "content": "width=device-width, initial-scale=1.0"}
-    ]
+    ],
+    # Make sure the app works with relative URLs
+    update_title=None,
+    suppress_callback_exceptions=True,
+    # Ensure correct serving of static files
+    assets_folder='assets',
+    # Decrease JavaScript bundle size
+    compress=True
 )
+
+# Configure the server
 server = app.server
 app.title = "California Housing Dashboard"
+
+# Enable debug mode only in development
+app.config.suppress_callback_exceptions = True
 
 # Custom CSS
 colors = {
@@ -234,103 +278,139 @@ app.layout = html.Div([
      Input('reset-button', 'n_clicks')]
 )
 def update_figures(price_range, ocean_proximity, selected_feature, x_axis, y_axis, n_clicks):
+    # Debug information
+    print(f"Callback triggered with price_range={price_range}, ocean_proximity={ocean_proximity}, feature={selected_feature}")
+    
     # Handle the reset button
     ctx = dash.callback_context
     if ctx.triggered and 'reset-button' in ctx.triggered[0]['prop_id']:
         # This will trigger another callback with default values
+        print("Reset button clicked - returning no_update")
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
-    # Filter data based on selections
-    filtered_data = data[
-        (data['median_house_value'] >= price_range[0]) & 
-        (data['median_house_value'] <= price_range[1]) &
-        (data['ocean_proximity'].isin(ocean_proximity))
-    ]
-    
-    if filtered_data.empty:
-        # If no data matches filters, return empty figures
+    # Check if any of the inputs are None or empty
+    if not price_range or not ocean_proximity or not selected_feature or not x_axis or not y_axis:
+        print("Missing inputs - returning empty figures")
         return create_empty_figures()
     
-    # Create scatter map
-    scatter_map_fig = create_scatter_map(filtered_data, selected_feature)
+    # Filter data based on selections
+    try:
+        filtered_data = data[
+            (data['median_house_value'] >= price_range[0]) & 
+            (data['median_house_value'] <= price_range[1]) &
+            (data['ocean_proximity'].isin(ocean_proximity))
+        ]
+        print(f"Filtered data shape: {filtered_data.shape}")
+    except Exception as e:
+        print(f"Error filtering data: {e}")
+        return create_empty_figures()
     
-    # Create histogram
-    histogram_fig = create_histogram(filtered_data, selected_feature)
+    if filtered_data.empty:
+        print("Filtered data is empty - returning empty figures")
+        return create_empty_figures()
     
-    # Create scatter plot
-    scatter_plot_fig = create_scatter_plot(filtered_data, x_axis, y_axis)
+    # Generate the figures
+    try:
+        print("Creating scatter map...")
+        scatter_map = create_scatter_map(filtered_data, selected_feature)
+        print("Creating histogram...")
+        histogram = create_histogram(filtered_data, selected_feature)
+        print("Creating scatter plot...")
+        scatter_plot = create_scatter_plot(filtered_data, x_axis, y_axis)
+        print("Creating correlation heatmap...")
+        correlation_heatmap = create_correlation_heatmap(filtered_data)
+        print("Creating boxplot...")
+        boxplot = create_boxplot(filtered_data, selected_feature)
+        print("Creating stats panel...")
+        stats_panel = create_stats_panel(filtered_data)
+        print("All visualizations created successfully")
+    except Exception as e:
+        print(f"Error creating visualizations: {e}")
+        import traceback
+        traceback.print_exc()
+        return create_empty_figures()
     
-    # Create correlation heatmap
-    correlation_fig = create_correlation_heatmap(filtered_data)
-    
-    # Create boxplot for ocean proximity analysis
-    boxplot_fig = create_boxplot(filtered_data, selected_feature)
-    
-    # Create key stats
-    stats_panel = create_stats_panel(filtered_data)
-    
-    return scatter_map_fig, histogram_fig, scatter_plot_fig, correlation_fig, boxplot_fig, stats_panel
+    return scatter_map, histogram, scatter_plot, correlation_heatmap, boxplot, stats_panel
 
-# Helper function to create empty figures
 def create_empty_figures():
-    empty_fig = {
-        'data': [],
-        'layout': {
-            'title': 'No data matches your filter criteria',
-            'xaxis': {'title': ''},
-            'yaxis': {'title': ''}
-        }
-    }
-    return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, html.Div("No data available for your selection")
+    empty_fig = go.Figure()
+    empty_fig.update_layout(
+        title="No Data Available",
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        annotations=[{
+            "text": "No matching data found. Try adjusting your filters.",
+            "xref": "paper",
+            "yref": "paper",
+            "showarrow": False,
+            "font": {"size": 20}
+        }]
+    )
+    empty_stats = html.Div([
+        html.H4("No data available with current filters", 
+                style={'textAlign': 'center', 'color': '#888'})
+    ])
+    return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_stats
 
 # Function to create scatter map
 def create_scatter_map(filtered_data, selected_feature):
-    # Create a sample if the dataset is too large for smooth rendering
-    if len(filtered_data) > 1000:
-        map_data = filtered_data.sample(1000)
-    else:
-        map_data = filtered_data
-    
-    # Create colorscale based on the feature
-    max_value = filtered_data[selected_feature].max()
-    min_value = filtered_data[selected_feature].min()
-    
-    # Get nice label for the feature
-    feature_label = selected_feature.replace('_', ' ').title()
-    
-    # Create the map figure
-    fig = px.scatter_mapbox(
-        map_data, 
-        lat="latitude", 
-        lon="longitude", 
-        color=selected_feature,
-        color_continuous_scale=px.colors.sequential.Viridis,
-        range_color=[min_value, max_value],
-        zoom=5.5,
-        center={"lat": 37.5, "lon": -119.5},  # Center of California
-        mapbox_style="carto-positron",
-        height=500,
-        opacity=0.7,
-        hover_data={
-            'median_house_value': True,
-            'median_income': True,
-            'ocean_proximity': True,
-            'total_rooms': True,
-            'total_bedrooms': True,
-            'population': True,
-            'latitude': False,
-            'longitude': False
-        }
-    )
-    
-    fig.update_layout(
-        margin={"r": 0, "t": 0, "l": 0, "b": 0},
-        coloraxis_colorbar=dict(
-            title=feature_label
+    try:
+        # Create a sample if the dataset is too large for smooth rendering
+        if len(filtered_data) > 1000:
+            map_data = filtered_data.sample(1000)
+        else:
+            map_data = filtered_data
+        
+        # Create colorscale based on the feature
+        max_value = filtered_data[selected_feature].max()
+        min_value = filtered_data[selected_feature].min()
+        
+        # Get nice label for the feature
+        feature_label = selected_feature.replace('_', ' ').title()
+        
+        # Create the map figure
+        fig = px.scatter_mapbox(
+            map_data, 
+            lat="latitude", 
+            lon="longitude", 
+            color=selected_feature,
+            color_continuous_scale=px.colors.sequential.Viridis,
+            range_color=[min_value, max_value],
+            zoom=5.5,
+            center={"lat": 37.5, "lon": -119.5},  # Center of California
+            mapbox_style="carto-positron",  # Use a style that doesn't require API key
+            height=500,
+            opacity=0.7,
+            hover_data={
+                'median_house_value': True,
+                'median_income': True,
+                'ocean_proximity': True,
+                'total_rooms': True,
+                'total_bedrooms': True,
+                'population': True,
+                'latitude': False,
+                'longitude': False
+            }
         )
-    )
-    
-    return fig
+        
+        fig.update_layout(
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            coloraxis_colorbar=dict(
+                title=feature_label
+            )
+        )
+        
+        return fig
+    except Exception as e:
+        print(f"Error creating scatter map: {e}")
+        # Return a simple fallback figure
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error creating map visualization: {str(e)}",
+            showarrow=False,
+            font=dict(size=12)
+        )
+        return fig
 
 # Function to create histogram
 def create_histogram(filtered_data, selected_feature):
@@ -539,6 +619,11 @@ def reset_filters(n_clicks):
         ]
     raise PreventUpdate
 
-# Run the app
+# Add this line at the end of the file
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8050)
+    # Determine port for local development
+    port = int(os.environ.get("PORT", 8050))
+    debug = os.environ.get("DASH_DEBUG", "True").lower() == "true"
+    
+    # Run the app
+    app.run_server(debug=debug, host='0.0.0.0', port=port)
