@@ -69,9 +69,8 @@ app = dash.Dash(
     update_title=None,
     suppress_callback_exceptions=True,
     # Ensure correct serving of static files
-    assets_folder='assets',
-    # Decrease JavaScript bundle size
-    compress=True
+    assets_folder='assets'
+    # Compression will be handled by flask-compress
 )
 
 # Configure the server

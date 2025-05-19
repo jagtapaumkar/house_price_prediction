@@ -7,6 +7,7 @@ requests==2.31.0
 dash==2.14.1
 plotly==5.17.0
 dash-bootstrap-components==1.5.0
+flask-compress==1.13
 
 # Server for production deployment
 gunicorn==21.2.0
